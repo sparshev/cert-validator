@@ -8,28 +8,33 @@ Description: Simple multithreaded script to validate the provided domains/IPs SS
 
 from __future__ import print_function
 
-import os, sys, re
+import os
+import sys
+import re
 import argparse
 
-import socket, ssl
+import socket
+import ssl
 from datetime import datetime
 import bisect
 import threading
 
 try:
-    import Queue as queue # Python 2
+    import Queue as queue  # Python 2
 except ImportError:
-    import queue # Python 3
+    import queue  # Python 3
+
 
 def eprint(*args, **kwargs):
     '''Print to stderr'''
     print(*args, file=sys.stderr, **kwargs)
 
+
 class CertValidator(object):
     '''Object to control the cert validating process'''
 
     # Allow only symbols allowed in standard
-    _allowed_hostname = re.compile("(?!-)[A-Z\d-]{1,63}(?<!-)$", re.IGNORECASE)
+    _allowed_hostname = re.compile(r'(?!-)[A-Z\d-]{1,63}(?<!-)$', re.IGNORECASE)
 
     # Datetime parse format to sort the certificates
     _dtformat = '%b %d %H:%M:%S %Y %Z'
@@ -90,7 +95,7 @@ class CertValidator(object):
         if len(hostname) > 255:
             return False
         if hostname[-1] == '.':
-            hostname = hostname[:-1] # strip exactly one dot from the right, if present
+            hostname = hostname[:-1]
         return all(self._allowed_hostname.match(x) for x in hostname.split('.'))
 
     def prepare_address(self, addr_str):
@@ -250,7 +255,6 @@ class CertValidator(object):
             # Getting only PEM, because data requires validation of the cert
             result['cert_pem'] = ssl.DER_cert_to_PEM_cert(ssl_sock.getpeercert(True))
             ssl_sock.close()
-            eprint('DEBUG: Canary results:', result)
 
             # Connect using socket to validate cert and get parsed cert
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -330,13 +334,14 @@ class CertValidator(object):
     def wait(self):
         '''Wait until all the list will be processed'''
         try:
+            # TODO: KeyboardInterrupt seems not working as expected
             self._results_thread.join()
         except KeyboardInterrupt:
             self._enabled = False
             eprint('KeyboardInterrupt catched, stopping the program')
-        except:
+        except Exception as e:
             self._enabled = False
-            eprint('Unknown exception happened')
+            eprint('Unknown exception happened:', e)
             raise
 
 
@@ -345,6 +350,7 @@ def main():
     cv = CertValidator(sys.argv[1:])
     cv.process()
     cv.wait()
+
 
 if __name__ == '__main__':
     main()

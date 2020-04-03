@@ -110,6 +110,33 @@ drwxr-xr-x 1 user user  156 Apr  3 01:23 ..
 
 ## Testing
 
+* Clone the repo
+    ```
+    $ git clone https://github.com/sparshev/cert-validator.git
+    ```
+
+### Docker
+
+* Run tests in docker
+    ```
+    $ docker run -it --rm -v "${PWD}/cert-validator:/home/user/project:ro" python:2.7-alpine /home/user/project/test.sh
+    $ docker run -it --rm -v "${PWD}/cert-validator:/home/user/project:ro" python:3-alpine /home/user/project/test.sh
+    ```
+
+### VENV
+
+* Create venv and activate it
+    ```
+    $ python -m venv .venv
+    $ . .venv/bin/activate
+    ```
+* Run tests
+    ```
+    $ ./test.sh
+    ```
+
+### SimpleHTTPSTest
+
 * Go to test dir:
     ```
     $ cd test

@@ -1,0 +1,4 @@
+# Requirements for testing
+flake8
+pytest
+pytest-cov
