@@ -139,7 +139,7 @@ optional arguments:
 
 * Go to test dir:
     ```
-    $ cd test
+    $ cd tools
     ```
 * Generate openssl ca & certs:
     ```
@@ -173,12 +173,12 @@ optional arguments:
 * Streaming support
 * Automation to check style and validate python code
 * CI to execute automation on pull request and during merge
+* Unit tests
+* Automation for unit tests execution
 
 ## TODO
 
-* Unit tests
 * Code coverage
-* Automation for unit tests execution
 
 ## License
 
