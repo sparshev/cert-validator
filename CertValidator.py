@@ -196,6 +196,10 @@ class CertValidator(object):
                 self._file_in = open(self._cfg.file_list, 'r')
 
         # Create reusable SSL context, because the configs are the same
+        # Canary context to get the certificate and data
+        self._ctx_canary = ssl.SSLContext(ssl.PROTOCOL_TLS)
+        self._ctx_canary.verify_mode = ssl.CERT_NONE
+        # Real context to verify the cert
         self._ctx = ssl.SSLContext(ssl.PROTOCOL_TLS)
         self._ctx.verify_mode = ssl.CERT_REQUIRED
         if self._cfg.hostname_check:
@@ -237,12 +241,16 @@ class CertValidator(object):
         }
 
         try:
-            # Get the server certificate in PEM and ensure host is ok
-
+            # Canary request the server certificate in PEM and ensure host is ok
             # TODO: that will be better to decode the cert and show info for the user
             # but looks like it's hard without the additional (not-builtin) modules
-            result['cert_pem'] = ssl.get_server_certificate(address)
-            # ^ Not working well when SNI is required
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            ssl_sock = self._ctx_canary.wrap_socket(sock, server_hostname=address[0])
+            ssl_sock.connect(address)
+            # Getting only PEM, because data requires validation of the cert
+            result['cert_pem'] = ssl.DER_cert_to_PEM_cert(ssl_sock.getpeercert(True))
+            ssl_sock.close()
+            eprint('DEBUG: Canary results:', result)
 
             # Connect using socket to validate cert and get parsed cert
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -250,7 +258,6 @@ class CertValidator(object):
             try:
                 ssl_sock.connect(address)
                 result['cert_data'] = ssl_sock.getpeercert()
-                result['cert_pem'] = ssl.DER_cert_to_PEM_cert(ssl_sock.getpeercert(True))
                 result['not_after'] = datetime.strptime(
                         result['cert_data']['notAfter'], self._dtformat)
             except ssl.SSLError as e:
