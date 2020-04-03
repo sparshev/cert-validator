@@ -39,8 +39,9 @@ class CertValidator(object):
         # TODO: not the best interface to use from non-cli logic,
         # but unifies validation of variables and default settings
         parser = self.create_parser()
-
         self._cfg = self.parse_args(parser, args)
+
+        self._workers = []
 
     def create_parser(self):
         '''Create parser and specify arguments'''
@@ -54,20 +55,21 @@ class CertValidator(object):
                             help='default port to use during connection')
         parser.add_argument('-t', '--threads-max', type=int, default=16, dest='threads_max',
                             help='set the max number of parallel threads')
-        parser.add_argument('-c', '--ca',
-                            help='pem file with custom CA to validate the certs')
         parser.add_argument('-n', '--names',
                             help='domains/IPs comma separated list to validate')
-        parser.add_argument('-w', '--warnings', action='store_true',
-                            help='only print certs with issues')
         parser.add_argument('-s', '--sort', action='store_true',
                             help='sort certificates by validation and expiration')
-        parser.add_argument('-d', '--days', type=int,
-                            help='warn when cert expires less then in number of days')
         parser.add_argument('-o', '--out-dir', dest='out_dir',
                             help='directory to store captured data files')
         parser.add_argument('--timeout', type=float, default=1.0,
                             help='connection timeout to get the certificate')
+        # TODO:
+        parser.add_argument('-c', '--ca',
+                            help='pem file with custom CA to validate the certs')
+        parser.add_argument('-d', '--days', type=int,
+                            help='warn when cert expires less then in number of days')
+        parser.add_argument('-w', '--warnings', action='store_true',
+                            help='only print certs with issues')
         return parser
 
     def parse_args(self, parser, args):
@@ -111,15 +113,56 @@ class CertValidator(object):
         return address
 
     def process(self):
-        '''Run the data processing'''
-        self.process_prepare()
-        self.process_input()
-        self.process_results()
+        '''Run non-blocking data processing'''
 
-    def process_prepare(self):
+        # Prepare the process
+        self._process_prepare()
+
+        # Run feed thread
+        self._feed_thread = threading.Thread(target=self._process_feed)
+        self._feed_thread.start()
+
+        # Run the main workers
+        for i in range(self._cfg.threads_max):
+            # TODO: Remove workers if the number is lower than num of threads
+            if len(self._workers) > i:
+                if not self._workers[i].is_alive():
+                    thread = threading.Thread(
+                            target=self._worker_thread, args=(self._process_input,))
+                    thread.start()
+                    self._workers[i] = thread
+            else:
+                thread = threading.Thread(
+                        target=self._worker_thread, args=(self._process_input,))
+                thread.start()
+                self._workers.append(thread)
+
+        # Run results thread
+        self._results_thread = threading.Thread(target=self._process_results)
+        self._results_thread.start()
+
+    def _worker_thread(self, func):
+        '''Simple worker gets data from queue and feeds the processing function with it'''
+        while self._enabled:
+            try:
+                data = self._queue_in.get(True, 0.1)
+                try:
+                    result = func(data)
+                    self._queue_out.put(result)
+                except Exception as e:
+                    eprint('ERROR: Exception during processing of %s: %s' % (data, e))
+
+            except queue.Empty:
+                if not self._feed_thread.is_alive():
+                    break
+
+    def _process_prepare(self):
         '''Run the validation process as a separated thread'''
+        if self._cfg.verbose:
+            eprint('DEBUG: Running process prepare')
         self._queue_in = queue.Queue()
         self._queue_out = queue.Queue()
+        self._enabled = True
 
         # Set timeout for sockets
         socket.setdefaulttimeout(self._cfg.timeout)
@@ -150,9 +193,6 @@ class CertValidator(object):
                 # Use file to read data - the file also could be a filesocket
                 self._file_in = open(self._cfg.file_list, 'r')
 
-            for line in self._file_in:
-                self._queue_in.put(self.prepare_address(line.rstrip()))
-
         # Create reusable SSL context, because the configs are the same
         self._ctx = ssl.SSLContext(ssl.PROTOCOL_TLS)
         self._ctx.verify_mode = ssl.CERT_REQUIRED
@@ -164,93 +204,120 @@ class CertValidator(object):
             eprint('DEBUG: SSL Context CA certs:', self._ctx.get_ca_certs())
             eprint('DEBUG: SSL default verify paths:', ssl.get_default_verify_paths())
 
-    def process_input(self):
-        '''Processing input data'''
-        while True:
+    def _process_feed(self):
+        '''Getting data from file/stdin and put to queue_in'''
+        if self._cfg.verbose:
+            eprint('DEBUG: Running process feed')
+        # TODO: Limit data read: no more than 4x of the workers pool
+        if self._cfg.file_list:
+            for line in self._file_in:
+                self._queue_in.put(self.prepare_address(line.rstrip()))
+        if self._cfg.verbose:
+            eprint('DEBUG: End process feed')
+
+    def _process_input(self, address):
+        '''Processing address'''
+        result = {
+            'address': address,
+            'cert_pem': None,
+            'cert_data': None,
+            'not_after': None,
+            'errors': [],
+        }
+
+        try:
+            # Get the server certificate in PEM and ensure host is ok
+
+            # TODO: that will be better to decode the cert and show info for the user
+            # but looks like it's hard without the additional (not-builtin) modules
+            result['cert_pem'] = ssl.get_server_certificate(address)
+
+            # Connect using socket to validate cert and get parsed cert
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            ssl_sock = self._ctx.wrap_socket(sock, server_hostname=address[0])
             try:
-                address = self._queue_in.get(True, 0.1)
-            except queue.Empty:
-                break # TODO: For streaming need to check that the stream is over
-
-            result = {
-                'address': address,
-                'cert_pem': None,
-                'cert_data': None,
-                'not_after': None,
-                'errors': [],
-            }
-
-            try:
-                # Get the server certificate in PEM and ensure host is ok
-
-                # TODO: that will be better to decode the cert and show info for the user
-                # but looks like it's hard without the additional (not-builtin) modules
-                result['cert_pem'] = ssl.get_server_certificate(address)
-
-                # Connect using socket to validate cert and get parsed cert
-                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                ssl_sock = self._ctx.wrap_socket(sock, server_hostname=address[0])
-                try:
-                    ssl_sock.connect(address)
-                    result['cert_data'] = ssl_sock.getpeercert()
-                    result['not_after'] = datetime.strptime(
-                            result['cert_data']['notAfter'], self._dtformat)
-                except ssl.SSLError as e:
-                    # In case the certificate is invalid
-                    if self._cfg.verbose:
-                        eprint('DEBUG: SSL error for address %s: %s', address, e)
-                    result['errors'].append(e)
-                finally:
-                    ssl_sock.close()
-            except IOError as e:
-                # Catch timeout or dns resolution error
+                ssl_sock.connect(address)
+                result['cert_data'] = ssl_sock.getpeercert()
+                result['not_after'] = datetime.strptime(
+                        result['cert_data']['notAfter'], self._dtformat)
+            except ssl.SSLError as e:
+                # In case the certificate is invalid
                 if self._cfg.verbose:
-                    eprint('DEBUG: Connection issue to', address, e)
+                    eprint('DEBUG: SSL error for address', address, e)
                 result['errors'].append(e)
-            except Exception as e:
-                if self._cfg.verbose:
-                    eprint('DEBUG: Unknown exception during connection', address, e)
-                result['errors'].append(e)
+            finally:
+                ssl_sock.close()
+        except IOError as e:
+            # Catch timeout or dns resolution error
+            if self._cfg.verbose:
+                eprint('DEBUG: Connection issue to', address, e)
+            result['errors'].append(e)
+        except Exception as e:
+            if self._cfg.verbose:
+                eprint('DEBUG: Unknown exception during connection', address, e)
+            result['errors'].append(e)
 
-            self._queue_out.put(result)
+        return result
 
-    def process_results(self):
+    def _process_results(self):
         '''Processing results data'''
-        self._sort_id = []
-        self._sort_data = {}
-        while True:
+        if self._cfg.verbose:
+            eprint('DEBUG: Running process result')
+        # Using a couple of array and dict to sort during insert
+        sort_id = []
+        sort_data = {}
+
+        while self._enabled:
             try:
                 res = self._queue_out.get(True, 0.1)
+
+                if self._cfg.sort and not res['errors']:
+                    # Sort only valid results
+                    secs = int((res['not_after'] - datetime(1970, 1, 1)).total_seconds())
+                    bisect.insort(sort_id, secs)
+                    sort_data[secs] = res
+                else:
+                    status = 'FAILURE' if res['errors'] else ('%dd' % (
+                        res['not_after'] - datetime.now()).days)
+                    print('%s - %s:%d' % (status, res['address'][0], res['address'][1]))
+
+                if res['cert_pem'] and self._cfg.out_dir:
+                    # Save pem file
+                    out_file = os.path.join(self._cfg.out_dir, '%s_%d.pem' % res['address'])
+                    with open(out_file, 'w') as f:
+                        f.write(res['cert_pem'])
             except queue.Empty:
-                break # TODO: For streaming need to check that the stream is over
-
-            if self._cfg.sort and not res['errors']:
-                # Sort only valid results
-                secs = int((res['not_after'] - datetime(1970, 1, 1)).total_seconds())
-                bisect.insort(self._sort_id, secs)
-                self._sort_data[secs] = res
-            else:
-                status = 'FAILURE' if res['errors'] else ('%dd' % (
-                    res['not_after'] - datetime.now()).days)
-                print('%s - %s:%d' % (status, res['address'][0], res['address'][1]))
-
-            if res['cert_pem'] and self._cfg.out_dir:
-                # Save pem file
-                out_file = os.path.join(self._cfg.out_dir, '%s_%d.pem' % res['address'])
-                with open(out_file, 'w') as f:
-                    f.write(res['cert_pem'])
+                # Check all the workers is alive
+                alive = False
+                for worker in self._workers:
+                    alive = worker.is_alive()
+                    if alive:
+                        break
+                if not alive:
+                    break
 
         # Print sorted data
         now = datetime.now()
         if self._cfg.sort:
-            for i in self._sort_id:
-                res = self._sort_data[i]
+            for i in sort_id:
+                res = sort_data[i]
                 diff = res['not_after'] - now
                 print('%sd left - %s:%d' % (diff.days, res['address'][0], res['address'][1]))
 
+        if self._cfg.verbose:
+            eprint('DEBUG: End process result')
+
     def wait(self):
         '''Wait until all the list will be processed'''
-        pass
+        try:
+            self._results_thread.join()
+        except KeyboardInterrupt:
+            self._enabled = False
+            eprint('KeyboardInterrupt catched, stopping the program')
+        except:
+            self._enabled = False
+            eprint('Unknown exception happened')
+            raise
 
 
 def main():
