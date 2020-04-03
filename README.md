@@ -24,6 +24,20 @@ Started: Thu Apr 2 13:27:06 2020 -0700
 
 * Python >= 2.7.9 or 3.4.3
 
+## Script highlights
+
+* Using built-in threading (GIL) due to ssl-request most of the time waiting for response
+* Minimal number of dependencies to simplify direct running on the target system
+* Reusability from another scripts by importing as a module
+* Streaming support
+* Automation to check style and validate python code
+* CI to execute automation on pull request and on master change
+* Unit tests & CI automation
+
+## TODO
+
+* Code coverage
+
 ## Usage
 
 Just run the script and it will show the help screen:
@@ -164,21 +178,6 @@ optional arguments:
     512d left - 0.0.0.0:4443
     DEBUG: End process result
     ```
-
-## Script highlights
-
-* Using built-in threading (GIL) due to ssl-request most of the time waiting for response
-* Minimal number of dependencies to simplify direct running on the target system
-* Reusability from another scripts by importing as a module
-* Streaming support
-* Automation to check style and validate python code
-* CI to execute automation on pull request and during merge
-* Unit tests
-* Automation for unit tests execution
-
-## TODO
-
-* Code coverage
 
 ## License
 
