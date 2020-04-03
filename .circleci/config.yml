@@ -1,0 +1,40 @@
+version: 2.1
+
+workflows:
+  test-sh:
+    jobs:
+      - run_test:
+          python_version: 2-alpine
+      - run_test:
+          python_version: 3-alpine
+
+  nightly_jenkins_test:
+    triggers:
+      - schedule:
+          cron: "0 6 * * *"
+          filters:
+            branches:
+              only:
+                - master
+    jobs:
+      - run_test:
+          python_version: 2-alpine
+      - run_test:
+          python_version: 3-alpine
+
+jobs:
+  run_test:
+    parameters:
+      python_version:
+        description: |
+          What kind of python image to use
+        default: 2-alpine
+        type: string
+    docker:
+      - image: python:<< parameters.python_version >>
+    working_directory: ~/repo
+    steps:
+      - checkout
+      - run:
+          name: Run tests
+          command: ./test.sh

@@ -1,6 +1,8 @@
 # Cert Validator
 
-This python3 script allow to scan the provided list of sites, check their validity and export the
+[![CircleCI](https://circleci.com/gh/sparshev/cert-validator/tree/master.svg?style=shield)](https://circleci.com/gh/sparshev/cert-validator)
+
+This python2/3 script allow to scan the provided list of sites, check their validity and export the
 captured certificates to file/s.
 
 Also the script:
@@ -21,8 +23,6 @@ Started: Thu Apr 2 13:27:06 2020 -0700
 ## Requirements
 
 * Python >= 2.7.9 or 3.4.3
-
-Tested on: (2.7.17, 3.6.9)
 
 ## Usage
 
@@ -62,30 +62,30 @@ optional arguments:
 ### Example
 
 * Run through file list with output to pems directory and sort the output
-```
-$ ./CertValidator.py -f test_list.lst -o pems -s
-45d left - www.wix.com:443
-53d left - www.google.com:443
-57d left - www.facebook.com:443
-106d left - www.yahoo.com:443
-178d left - myspace.com:443
-186d left - www.wikipedia.org:443
-203d left - www.apple.com:443
-650d left - www.netflix.com:443
+    ```
+    $ ./CertValidator.py -f test_list.lst -o pems -s
+    45d left - www.wix.com:443
+    53d left - www.google.com:443
+    57d left - www.facebook.com:443
+    106d left - www.yahoo.com:443
+    178d left - myspace.com:443
+    186d left - www.wikipedia.org:443
+    203d left - www.apple.com:443
+    650d left - www.netflix.com:443
 
-$ ls -alh pems
-total 32K
-drwxr-x--- 1 user user  348 Apr  3 01:23 .
-drwxr-xr-x 1 user user  156 Apr  3 01:23 ..
--rw-r--r-- 1 user user 2.4K Apr  3 01:23 myspace.com_443.pem
--rw-r--r-- 1 user user 2.5K Apr  3 01:23 www.apple.com_443.pem
--rw-r--r-- 1 user user 2.2K Apr  3 01:23 www.facebook.com_443.pem
--rw-r--r-- 1 user user 1.7K Apr  3 01:23 www.google.com_443.pem
--rw-r--r-- 1 user user 2.8K Apr  3 01:23 www.netflix.com_443.pem
--rw-r--r-- 1 user user 2.9K Apr  3 01:23 www.wikipedia.org_443.pem
--rw-r--r-- 1 user user 2.1K Apr  3 01:23 www.wix.com_443.pem
--rw-r--r-- 1 user user 2.5K Apr  3 01:23 www.yahoo.com_443.pem
-```
+    $ ls -alh pems
+    total 32K
+    drwxr-x--- 1 user user  348 Apr  3 01:23 .
+    drwxr-xr-x 1 user user  156 Apr  3 01:23 ..
+    -rw-r--r-- 1 user user 2.4K Apr  3 01:23 myspace.com_443.pem
+    -rw-r--r-- 1 user user 2.5K Apr  3 01:23 www.apple.com_443.pem
+    -rw-r--r-- 1 user user 2.2K Apr  3 01:23 www.facebook.com_443.pem
+    -rw-r--r-- 1 user user 1.7K Apr  3 01:23 www.google.com_443.pem
+    -rw-r--r-- 1 user user 2.8K Apr  3 01:23 www.netflix.com_443.pem
+    -rw-r--r-- 1 user user 2.9K Apr  3 01:23 www.wikipedia.org_443.pem
+    -rw-r--r-- 1 user user 2.1K Apr  3 01:23 www.wix.com_443.pem
+    -rw-r--r-- 1 user user 2.5K Apr  3 01:23 www.yahoo.com_443.pem
+    ```
 * Run throught stdin list with output to pems2 dir and verbosity without sorting
     ```
     $ echo "www.apple.com\nwww.google.com" | ./CertValidator.py -f - -o pems2 -v
@@ -170,15 +170,15 @@ drwxr-xr-x 1 user user  156 Apr  3 01:23 ..
 * Using built-in threading (GIL) due to ssl-request most of the time waiting for response
 * Minimal number of dependencies to simplify direct running on the target system
 * Reusability from another scripts by importing as a module
+* Streaming support
+* Automation to check style and validate python code
+* CI to execute automation on pull request and during merge
 
 ## TODO
 
-* Streaming support
-* Automation to check style and validate python code
 * Unit tests
 * Code coverage
 * Automation for unit tests execution
-* CI to execute automation on pull request and during merge
 
 ## License
 
