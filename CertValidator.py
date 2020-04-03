@@ -63,13 +63,15 @@ class CertValidator(object):
                             help='directory to store captured data files')
         parser.add_argument('--timeout', type=float, default=1.0,
                             help='connection timeout to get the certificate')
-        # TODO:
         parser.add_argument('-c', '--ca',
-                            help='pem file with custom CA to validate the certs')
+                            help='cafile or capath with custom CA to validate the certs')
+        parser.add_argument('--hostname-check', action='store_true',
+                            help='check hostname to be set correctly')
+        # TODO:
         parser.add_argument('-d', '--days', type=int,
-                            help='warn when cert expires less then in number of days')
+                            help='warn when cert expires less then in number of days (TODO)')
         parser.add_argument('-w', '--warnings', action='store_true',
-                            help='only print certs with issues')
+                            help='only print certs with issues (TODO)')
         return parser
 
     def parse_args(self, parser, args):
@@ -196,8 +198,17 @@ class CertValidator(object):
         # Create reusable SSL context, because the configs are the same
         self._ctx = ssl.SSLContext(ssl.PROTOCOL_TLS)
         self._ctx.verify_mode = ssl.CERT_REQUIRED
-        self._ctx.check_hostname = True
-        self._ctx.load_default_certs()
+        if self._cfg.hostname_check:
+            self._ctx.check_hostname = True
+        if self._cfg.ca:
+            if os.path.isdir(self._cfg.ca):
+                self._ctx.load_verify_locations(capath=self._cfg.ca)
+            elif os.path.isfile(self._cfg.ca):
+                self._ctx.load_verify_locations(cafile=self._cfg.ca)
+            else:
+                raise Exception('ERROR: Not existing cafile/capath is specified:', self._cfg.ca)
+        else:
+            self._ctx.load_default_certs()
 
         if self._cfg.verbose:
             eprint('DEBUG: SSL Context stats:', self._ctx.cert_store_stats())
@@ -231,6 +242,7 @@ class CertValidator(object):
             # TODO: that will be better to decode the cert and show info for the user
             # but looks like it's hard without the additional (not-builtin) modules
             result['cert_pem'] = ssl.get_server_certificate(address)
+            # ^ Not working well when SNI is required
 
             # Connect using socket to validate cert and get parsed cert
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -238,6 +250,7 @@ class CertValidator(object):
             try:
                 ssl_sock.connect(address)
                 result['cert_data'] = ssl_sock.getpeercert()
+                result['cert_pem'] = ssl.DER_cert_to_PEM_cert(ssl_sock.getpeercert(True))
                 result['not_after'] = datetime.strptime(
                         result['cert_data']['notAfter'], self._dtformat)
             except ssl.SSLError as e:
